@@ -216,6 +216,76 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Demo endpoint to simulate viewers (for testing)
+  app.post("/api/demo/add-viewers/:requestId", async (req, res) => {
+    try {
+      const requestId = parseInt(req.params.requestId);
+      const sellers = await storage.getSellers();
+      
+      // Add a few random sellers as viewers
+      const viewersToAdd = sellers.slice(0, 3);
+      const addedViewers = [];
+      
+      for (const seller of viewersToAdd) {
+        const viewer = await storage.addRequestViewer({
+          requestId,
+          sellerId: seller.id,
+          isCurrentlyViewing: true
+        });
+        addedViewers.push(viewer);
+      }
+
+      res.json(addedViewers);
+    } catch (error) {
+      console.error("Error adding demo viewers:", error);
+      res.status(500).json({ message: "Failed to add demo viewers" });
+    }
+  });
+
+  // Request viewer tracking
+  app.post("/api/requests/:id/viewers", async (req, res) => {
+    try {
+      const requestId = parseInt(req.params.id);
+      const { sellerId } = req.body;
+      
+      const viewer = await storage.addRequestViewer({
+        requestId,
+        sellerId,
+        isCurrentlyViewing: true
+      });
+      
+      res.json(viewer);
+    } catch (error) {
+      console.error("Error adding request viewer:", error);
+      res.status(500).json({ message: "Failed to add viewer" });
+    }
+  });
+
+  app.get("/api/requests/:id/viewers", async (req, res) => {
+    try {
+      const requestId = parseInt(req.params.id);
+      const viewers = await storage.getRequestViewers(requestId);
+      res.json(viewers);
+    } catch (error) {
+      console.error("Error fetching request viewers:", error);
+      res.status(500).json({ message: "Failed to fetch viewers" });
+    }
+  });
+
+  app.patch("/api/requests/:id/viewers/:sellerId", async (req, res) => {
+    try {
+      const requestId = parseInt(req.params.id);
+      const sellerId = parseInt(req.params.sellerId);
+      const { isViewing } = req.body;
+      
+      await storage.updateViewerStatus(requestId, sellerId, isViewing);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error updating viewer status:", error);
+      res.status(500).json({ message: "Failed to update viewer status" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

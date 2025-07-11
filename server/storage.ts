@@ -1,11 +1,12 @@
 import { 
-  users, sellers, categories, requests, offers, orders,
+  users, sellers, categories, requests, offers, orders, requestViewers,
   type User, type InsertUser,
   type Seller, type InsertSeller, type SellerWithDistance,
   type Category, type InsertCategory,
   type Request, type InsertRequest, type RequestWithOffers,
   type Offer, type InsertOffer, type OfferWithSeller,
-  type Order, type InsertOrder
+  type Order, type InsertOrder,
+  type RequestViewer, type InsertRequestViewer
 } from "@shared/schema";
 
 export interface IStorage {
@@ -39,6 +40,11 @@ export interface IStorage {
   // Order operations
   createOrder(order: InsertOrder): Promise<Order>;
   getOrdersByUser(userId: number): Promise<Order[]>;
+
+  // Request viewer operations
+  addRequestViewer(viewer: InsertRequestViewer): Promise<RequestViewer>;
+  getRequestViewers(requestId: number): Promise<Seller[]>;
+  updateViewerStatus(requestId: number, sellerId: number, isViewing: boolean): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
@@ -48,6 +54,7 @@ export class MemStorage implements IStorage {
   private requests: Map<number, Request> = new Map();
   private offers: Map<number, Offer> = new Map();
   private orders: Map<number, Order> = new Map();
+  private requestViewers: Map<string, RequestViewer> = new Map(); // key: "requestId-sellerId"
   
   private currentUserId = 1;
   private currentSellerId = 1;
@@ -55,6 +62,7 @@ export class MemStorage implements IStorage {
   private currentRequestId = 1;
   private currentOfferId = 1;
   private currentOrderId = 1;
+  private currentViewerId = 1;
 
   constructor() {
     this.seedData();
@@ -269,6 +277,8 @@ export class MemStorage implements IStorage {
       latitude: request.latitude.toString(),
       longitude: request.longitude.toString(),
       maxPrice: request.maxPrice.toString(),
+      autoAcceptPrice: request.autoAcceptPrice ? request.autoAcceptPrice.toString() : null,
+      autoAcceptEnabled: request.autoAcceptEnabled || false,
       buyerId: request.buyerId || null,
       categoryId: request.categoryId || null,
       imageUrl: request.imageUrl || null
@@ -346,6 +356,55 @@ export class MemStorage implements IStorage {
   async getOrdersByUser(userId: number): Promise<Order[]> {
     return Array.from(this.orders.values())
       .filter(order => order.buyerId === userId);
+  }
+
+  // Request viewer operations
+  async addRequestViewer(viewer: InsertRequestViewer): Promise<RequestViewer> {
+    const key = `${viewer.requestId}-${viewer.sellerId}`;
+    const existing = this.requestViewers.get(key);
+    
+    if (existing) {
+      // Update existing viewer
+      existing.isCurrentlyViewing = viewer.isCurrentlyViewing ?? true;
+      existing.viewedAt = new Date();
+      this.requestViewers.set(key, existing);
+      return existing;
+    } else {
+      // Create new viewer
+      const newViewer: RequestViewer = {
+        ...viewer,
+        id: this.currentViewerId++,
+        viewedAt: new Date(),
+        requestId: viewer.requestId || null,
+        sellerId: viewer.sellerId || null,
+        isCurrentlyViewing: viewer.isCurrentlyViewing ?? true
+      };
+      this.requestViewers.set(key, newViewer);
+      return newViewer;
+    }
+  }
+
+  async getRequestViewers(requestId: number): Promise<Seller[]> {
+    const viewers = Array.from(this.requestViewers.values())
+      .filter(viewer => viewer.requestId === requestId && viewer.isCurrentlyViewing);
+    
+    const sellers: Seller[] = [];
+    for (const viewer of viewers) {
+      const seller = this.sellers.get(viewer.sellerId!);
+      if (seller) {
+        sellers.push(seller);
+      }
+    }
+    return sellers;
+  }
+
+  async updateViewerStatus(requestId: number, sellerId: number, isViewing: boolean): Promise<void> {
+    const key = `${requestId}-${sellerId}`;
+    const viewer = this.requestViewers.get(key);
+    if (viewer) {
+      viewer.isCurrentlyViewing = isViewing;
+      this.requestViewers.set(key, viewer);
+    }
   }
 }
 

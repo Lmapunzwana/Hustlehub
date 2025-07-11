@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Card } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
 import { ArrowLeftIcon, CameraIcon, LoaderIcon } from 'lucide-react';
@@ -46,6 +47,8 @@ export default function BuyerRequestForm({
       maxPrice: 0,
       latitude: userLocation?.lat || 0,
       longitude: userLocation?.lng || 0,
+      autoAcceptEnabled: false,
+      autoAcceptPrice: 0,
     },
   });
 
@@ -58,6 +61,11 @@ export default function BuyerRequestForm({
       formData.append('latitude', data.latitude.toString());
       formData.append('longitude', data.longitude.toString());
       formData.append('buyerId', '1'); // Demo user ID
+      
+      if (data.autoAcceptEnabled) {
+        formData.append('autoAcceptEnabled', 'true');
+        formData.append('autoAcceptPrice', data.autoAcceptPrice?.toString() || '0');
+      }
       
       if (data.image) {
         formData.append('image', data.image);
@@ -247,6 +255,61 @@ export default function BuyerRequestForm({
               </FormItem>
             )}
           />
+
+          {/* Auto Accept */}
+          <Card className="p-4 bg-gray-50 border-gray-200">
+            <div className="space-y-4">
+              <FormField
+                control={form.control}
+                name="autoAcceptEnabled"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center justify-between">
+                    <div className="space-y-0.5">
+                      <FormLabel className="text-base font-medium">Auto-Accept Offers</FormLabel>
+                      <p className="text-sm text-gray-600">
+                        Automatically accept offers at or below your set price
+                      </p>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+
+              {form.watch('autoAcceptEnabled') && (
+                <FormField
+                  control={form.control}
+                  name="autoAcceptPrice"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Auto-Accept Price (USD)</FormLabel>
+                      <FormControl>
+                        <div className="relative">
+                          <span className="absolute left-3 top-3 text-gray-500">$</span>
+                          <Input
+                            {...field}
+                            type="number"
+                            placeholder="0.00"
+                            className="pl-8"
+                            min="0"
+                            step="0.01"
+                          />
+                        </div>
+                      </FormControl>
+                      <p className="text-xs text-gray-500">
+                        Offers at or below this price will be automatically accepted
+                      </p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+            </div>
+          </Card>
 
           <Button
             type="submit"

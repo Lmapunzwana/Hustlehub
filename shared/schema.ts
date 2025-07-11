@@ -37,8 +37,19 @@ export const requests = pgTable("requests", {
   latitude: decimal("latitude", { precision: 10, scale: 8 }).notNull(),
   longitude: decimal("longitude", { precision: 11, scale: 8 }).notNull(),
   status: varchar("status", { length: 20 }).default("active"), // active, completed, expired
+  autoAcceptPrice: decimal("auto_accept_price", { precision: 10, scale: 2 }),
+  autoAcceptEnabled: boolean("auto_accept_enabled").default(false),
   expiresAt: timestamp("expires_at").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Request viewers tracking
+export const requestViewers = pgTable("request_viewers", {
+  id: serial("id").primaryKey(),
+  requestId: integer("request_id").references(() => requests.id),
+  sellerId: integer("seller_id").references(() => sellers.id),
+  viewedAt: timestamp("viewed_at").defaultNow(),
+  isCurrentlyViewing: boolean("is_currently_viewing").default(true),
 });
 
 export const offers = pgTable("offers", {
@@ -87,6 +98,12 @@ export const insertRequestSchema = createInsertSchema(requests).omit({
   maxPrice: z.coerce.number().positive(),
   latitude: z.coerce.number(),
   longitude: z.coerce.number(),
+  autoAcceptPrice: z.coerce.number().positive().optional(),
+});
+
+export const insertRequestViewerSchema = createInsertSchema(requestViewers).omit({
+  id: true,
+  viewedAt: true,
 });
 
 export const insertOfferSchema = createInsertSchema(offers).omit({
@@ -123,6 +140,9 @@ export type InsertOffer = z.infer<typeof insertOfferSchema>;
 
 export type Order = typeof orders.$inferSelect;
 export type InsertOrder = z.infer<typeof insertOrderSchema>;
+
+export type RequestViewer = typeof requestViewers.$inferSelect;
+export type InsertRequestViewer = z.infer<typeof insertRequestViewerSchema>;
 
 // Extended types for API responses
 export type SellerWithDistance = Seller & {

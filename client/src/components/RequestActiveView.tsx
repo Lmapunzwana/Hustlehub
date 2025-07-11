@@ -3,11 +3,12 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
 import { usePolling } from '@/hooks/usePolling';
 import { apiRequest } from '@/lib/queryClient';
-import { ArrowLeftIcon, ClockIcon } from 'lucide-react';
-import type { RequestWithOffers, Order, OfferWithSeller } from '@shared/schema';
+import { ArrowLeftIcon, ClockIcon, EyeIcon, UserIcon, PhoneIcon } from 'lucide-react';
+import type { RequestWithOffers, Order, OfferWithSeller, Seller } from '@shared/schema';
 
 interface RequestActiveViewProps {
   request: RequestWithOffers;
@@ -22,6 +23,7 @@ export default function RequestActiveView({
 }: RequestActiveViewProps) {
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [offers, setOffers] = useState<OfferWithSeller[]>(request.offers || []);
+  const [viewers, setViewers] = useState<Seller[]>([]);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -60,12 +62,26 @@ export default function RequestActiveView({
     enabled: timeRemaining > 0,
   });
 
+  // Poll for viewers
+  const { data: newViewers } = usePolling<Seller[]>({
+    queryKey: [`/api/requests/${request.id}/viewers`],
+    interval: 2000, // Poll every 2 seconds for viewers
+    enabled: timeRemaining > 0,
+  });
+
   // Update offers when new data arrives
   useEffect(() => {
     if (newOffers) {
       setOffers(newOffers);
     }
   }, [newOffers]);
+
+  // Update viewers when new data arrives
+  useEffect(() => {
+    if (newViewers) {
+      setViewers(newViewers);
+    }
+  }, [newViewers]);
 
   const acceptOfferMutation = useMutation({
     mutationFn: async (offerId: number) => {
@@ -180,6 +196,84 @@ export default function RequestActiveView({
               />
             </div>
           )}
+        </div>
+      </Card>
+
+      {/* Auto-Accept Status */}
+      {request.autoAcceptEnabled && (
+        <Card className="p-4 bg-blue-50 border-blue-200">
+          <div className="flex items-center space-x-2">
+            <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+            <span className="text-sm font-medium text-blue-800">
+              Auto-Accept enabled for offers ≤ {formatPrice(request.autoAcceptPrice || 0)}
+            </span>
+          </div>
+        </Card>
+      )}
+
+      {/* Currently Viewing */}
+      <Card className="p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center space-x-2">
+            <EyeIcon className="w-4 h-4 text-gray-600" />
+            <h4 className="font-medium text-gray-900">Sellers Viewing</h4>
+          </div>
+          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+            {viewers.length} viewing
+          </Badge>
+        </div>
+        
+        {viewers.length === 0 ? (
+          <p className="text-sm text-gray-500">No sellers viewing yet</p>
+        ) : (
+          <div className="flex -space-x-2">
+            {viewers.slice(0, 5).map((viewer) => (
+              <Avatar key={viewer.id} className="w-8 h-8 border-2 border-white">
+                <AvatarImage src={viewer.profileImageUrl || ''} alt={viewer.name} />
+                <AvatarFallback className="text-xs">
+                  {viewer.name.charAt(0)}
+                </AvatarFallback>
+              </Avatar>
+            ))}
+            {viewers.length > 5 && (
+              <div className="w-8 h-8 rounded-full bg-gray-100 border-2 border-white flex items-center justify-center">
+                <span className="text-xs font-medium text-gray-600">+{viewers.length - 5}</span>
+              </div>
+            )}
+          </div>
+        )}
+      </Card>
+
+      {/* Demo Buttons for Testing */}
+      <Card className="p-4 bg-yellow-50 border-yellow-200">
+        <h4 className="font-medium text-yellow-800 mb-3">Demo Actions</h4>
+        <div className="flex space-x-2">
+          <Button 
+            size="sm" 
+            variant="outline"
+            onClick={() => {
+              fetch(`/api/demo/create-offers/${request.id}`, { method: 'POST' })
+                .then(() => toast({
+                  title: "Demo offers created",
+                  description: "Sample offers have been added to your request"
+                }));
+            }}
+          >
+            Add Sample Offers
+          </Button>
+          <Button 
+            size="sm" 
+            variant="outline"
+            onClick={() => {
+              fetch(`/api/demo/add-viewers/${request.id}`, { method: 'POST' })
+                .then(() => toast({
+                  title: "Demo viewers added",
+                  description: "Sample sellers are now viewing your request"
+                }));
+            }}
+          >
+            Add Viewers
+          </Button>
         </div>
       </Card>
 
