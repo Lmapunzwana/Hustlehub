@@ -9,24 +9,39 @@ import OfferAcceptedView from "@/components/OfferAcceptedView";
 import { Button } from "@/components/ui/button";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import { useToast } from "@/hooks/use-toast";
-import { LocateIcon, RefreshCwIcon } from "lucide-react";
+import { LocateIcon, RefreshCwIcon, WifiIcon } from "lucide-react";
 import type { SellerWithDistance, Category, RequestWithOffers, Order } from "@shared/schema";
 
 type ViewType = 'sellers' | 'buyerRequest' | 'requestActive' | 'offerAccepted';
 
 export default function MapPage() {
-  const [currentView, setCurrentView] = useState<ViewType>('sellers');
-  const [isModalExpanded, setIsModalExpanded] = useState(false);
-  const [activeRequest, setActiveRequest] = useState<RequestWithOffers | null>(null);
-  const [acceptedOrder, setAcceptedOrder] = useState<Order | null>(null);
-  const { location, error: locationError, requestLocation } = useGeolocation();
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [currentView, setCurrentView] = useState<'sellers' | 'create-offer' | 'view-offers'>('sellers');
+  const [userType, setUserType] = useState<'buyer' | 'seller'>('buyer');
+  const [hoveredSeller, setHoveredSeller] = useState<SellerWithDistance | null>(null);
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  const { location, error: locationError, isLoading: locationLoading, requestLocation } = useGeolocation();
   const { toast } = useToast();
+
+  // WebSocket connection
+  const clientId = `user_${Math.random().toString(36).substr(2, 9)}`;
+  // const { isConnected, sendMessage, lastMessage } = useWebSocket(clientId, userType); // Assuming useWebSocket hook is available
+
+  // Location tracking for sellers
+  // useSellerLocationTracking(clientId, sendMessage); // Assuming useSellerLocationTracking hook is available
 
   // Fetch nearby sellers
   const { data: sellers = [], isLoading: sellersLoading, refetch: refetchSellers } = useQuery({
-    queryKey: ['/api/sellers', location?.lat, location?.lng],
+    queryKey: ["sellers", location?.lat, location?.lng],
+    queryFn: async () => {
+      if (!location) return [];
+
+      const response = await fetch(`http://localhost:8000/api/sellers/nearby?lat=${location.lat}&lng=${location.lng}&radius=5`);
+      if (!response.ok) throw new Error('Failed to fetch sellers');
+      return response.json();
+    },
     enabled: !!location,
-    refetchInterval: 5000, // Refresh every 5 seconds
+    refetchInterval: 5000,
   });
 
   // Fetch categories
@@ -54,25 +69,55 @@ export default function MapPage() {
     });
   };
 
-  const handleCreateRequest = () => {
-    setCurrentView('buyerRequest');
-    setIsModalExpanded(true);
+  // Mouse tracking for hover cards
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      setMousePosition({ x: e.clientX, y: e.clientY });
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, []);
+
+  // Handle WebSocket messages
+  // useEffect(() => {
+  //   if (lastMessage) {
+  //     console.log('Received WebSocket message:', lastMessage);
+  //   }
+  // }, [lastMessage]);
+
+  const handleCreateOffer = () => {
+    setCurrentView('create-offer');
+    setIsModalOpen(true);
   };
 
-  const handleBackToSellers = () => {
+  // const handleOfferSubmit = (offerData: any) => {
+  //   console.log('Offer created:', offerData);
+  //   setIsModalOpen(false);
+  //   setCurrentView('sellers');
+  // };
+
+  const handleOfferSubmit = (offerData: any) => {
+    console.log('Offer created:', offerData);
+    setIsModalOpen(false);
     setCurrentView('sellers');
-    setActiveRequest(null);
   };
 
-  const handleRequestSubmitted = (request: RequestWithOffers) => {
-    setActiveRequest(request);
-    setCurrentView('requestActive');
+  const handleAcceptOffer = (offerId: string) => {
+    // Implementation for accepting offers
+    console.log('Accepting offer:', offerId);
   };
 
-  const handleOfferAccepted = (order: Order) => {
-    setAcceptedOrder(order);
-    setCurrentView('offerAccepted');
+  const handleCounterOffer = (offerId: string, newPrice: number, message: string) => {
+    // Implementation for counter offers
+    console.log('Counter offer:', { offerId, newPrice, message });
   };
+
+  const handleReportOffer = (offerId: string, reason: string, description: string) => {
+    // Implementation for reporting
+    console.log('Reporting offer:', { offerId, reason, description });
+  };
+
 
   const getModalTitle = () => {
     switch (currentView) {
@@ -96,7 +141,7 @@ export default function MapPage() {
           <SellersView
             sellers={sellers}
             isLoading={sellersLoading}
-            onCreateRequest={handleCreateRequest}
+            onCreateRequest={handleCreateOffer}
           />
         );
       case 'buyerRequest':
@@ -104,23 +149,19 @@ export default function MapPage() {
           <BuyerRequestForm
             categories={categories}
             userLocation={location}
-            onBack={handleBackToSellers}
-            onRequestSubmitted={handleRequestSubmitted}
           />
         );
       case 'requestActive':
         return activeRequest ? (
           <RequestActiveView
             request={activeRequest}
-            onOfferAccepted={handleOfferAccepted}
-            onBack={handleBackToSellers}
+            onOfferAccepted={handleAcceptOffer}
           />
         ) : null;
       case 'offerAccepted':
         return acceptedOrder ? (
           <OfferAcceptedView
             order={acceptedOrder}
-            onBack={handleBackToSellers}
           />
         ) : null;
       default:
@@ -146,10 +187,49 @@ export default function MapPage() {
         sellers={sellers}
         userLocation={location}
         className="w-full h-full z-0"
+        onSellerHover={setHoveredSeller}
       />
 
+      {/* Seller hover card */}
+      {/* <SellerHoverCard
+        seller={hoveredSeller}
+        position={mousePosition}
+      /> */}
+
       {/* Map Controls */}
-      <div className="absolute top-4 right-4 z-10 space-y-2">
+      <div className="absolute top-4 right-4 flex flex-col gap-2">
+        {/* WebSocket Status */}
+        {/* <div className={`px-2 py-1 rounded text-xs font-medium ${
+          isConnected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+        }`}>
+          <WifiIcon className="h-3 w-3 inline mr-1" />
+          {isConnected ? 'Connected' : 'Disconnected'}
+        </div> */}
+
+        {/* User Type Toggle */}
+        <div className="bg-white rounded-lg shadow-md p-1 flex">
+          <button
+            onClick={() => setUserType('buyer')}
+            className={`px-3 py-1 text-xs rounded ${
+              userType === 'buyer'
+                ? 'bg-blue-500 text-white'
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            Buyer
+          </button>
+          <button
+            onClick={() => setUserType('seller')}
+            className={`px-3 py-1 text-xs rounded ${
+              userType === 'seller'
+                ? 'bg-green-500 text-white'
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            Seller
+          </button>
+        </div>
+
         <Button
           size="icon"
           variant="secondary"
@@ -171,8 +251,8 @@ export default function MapPage() {
       {/* Expandable Modal */}
       <ExpandableModal
         title={getModalTitle()}
-        isExpanded={isModalExpanded}
-        onExpandedChange={setIsModalExpanded}
+        isExpanded={isModalOpen}
+        onExpandedChange={setIsModalOpen}
       >
         {renderModalContent()}
       </ExpandableModal>

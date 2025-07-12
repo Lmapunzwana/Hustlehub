@@ -19,6 +19,7 @@ interface MapProps {
   sellers: SellerWithDistance[];
   userLocation?: { lat: number; lng: number } | null;
   className?: string;
+  onSellerHover?: (seller: SellerWithDistance | null) => void;
 }
 
 export default function Map({ sellers, userLocation, className }: MapProps) {
@@ -116,12 +117,29 @@ export default function Map({ sellers, userLocation, className }: MapProps) {
       const lng = parseFloat(seller.longitude);
 
       const marker = L.circleMarker([lat, lng], {
-        radius: 8,
+        radius: seller.isOnline ? 12 : 8,
         fillColor: seller.isOnline ? '#10B981' : '#9CA3AF',
         color: '#fff',
         weight: 2,
         opacity: 1,
         fillOpacity: 0.8,
+      });
+
+      // Add hover events
+      marker.on('mouseover', () => {
+        onSellerHover?.(seller);
+        marker.setStyle({
+          radius: seller.isOnline ? 16 : 12,
+          weight: 3
+        });
+      });
+
+      marker.on('mouseout', () => {
+        onSellerHover?.(null);
+        marker.setStyle({
+          radius: seller.isOnline ? 12 : 8,
+          weight: 2
+        });
       });
 
       const lastSeenText = seller.lastSeen ? 
