@@ -1,0 +1,28 @@
+
+FROM python:3.11-alpine
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apk add --no-cache gcc musl-dev libffi-dev
+
+# Copy requirements and install dependencies
+COPY backend/requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy backend source
+COPY backend/ ./
+
+# Create uploads directory
+RUN mkdir -p uploads
+
+# Create non-root user
+RUN addgroup -g 1001 -S appuser && \
+    adduser -S appuser -u 1001 -G appuser
+
+RUN chown -R appuser:appuser /app
+USER appuser
+
+EXPOSE 8000
+
+CMD ["python", "main.py"]
