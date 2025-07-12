@@ -37,7 +37,7 @@ export default function MapPage() {
       if (!location) return [];
 
       const response = await fetch(`http://localhost:8000/api/sellers/nearby?lat=${location.lat}&lng=${location.lng}&radius=5`);
-      if (!response.ok) throw new Error('Failed to fetch sellers');
+      if (!response.ok) throw new Error("Failed to fetch sellers");
       return response.json();
     },
     enabled: !!location,
@@ -45,8 +45,13 @@ export default function MapPage() {
   });
 
   // Fetch categories
-  const { data: categories = [] } = useQuery<Category[]>({
-    queryKey: ['/api/categories'],
+  const { data: categories = [] } = useQuery({
+    queryKey: ["categories"],
+    queryFn: async () => {
+      const response = await fetch("http://localhost:8000/api/categories");
+      if (!response.ok) throw new Error("Failed to fetch categories");
+      return response.json();
+    },
   });
 
   const handleLocateUser = () => {

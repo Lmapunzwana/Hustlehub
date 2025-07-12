@@ -1,332 +1,228 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Card } from '@/components/ui/card';
-import { Switch } from '@/components/ui/switch';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Textarea } from './ui/textarea';
+import { Label } from './ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Switch } from './ui/switch';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Upload, Camera } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { apiRequest } from '@/lib/queryClient';
-import { ArrowLeftIcon, CameraIcon, LoaderIcon } from 'lucide-react';
-import { insertRequestSchema } from '@shared/schema';
-import type { Category, RequestWithOffers } from '@shared/schema';
-import { z } from 'zod';
-
-const formSchema = insertRequestSchema.extend({
-  categoryId: z.coerce.number().min(1, 'Please select a category'),
-});
-
-type FormData = z.infer<typeof formSchema>;
 
 interface BuyerRequestFormProps {
-  categories: Category[];
+  onRequestCreated?: (requestId: string) => void;
   userLocation?: { lat: number; lng: number } | null;
-  onBack: () => void;
-  onRequestSubmitted: (request: RequestWithOffers) => void;
+  categories: Array<{ id: number; name: string; slug: string }>;
 }
 
-export default function BuyerRequestForm({
-  categories,
-  userLocation,
-  onBack,
-  onRequestSubmitted,
-}: BuyerRequestFormProps) {
-  const [selectedImage, setSelectedImage] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+export default function BuyerRequestForm({ onRequestCreated, userLocation, categories }: BuyerRequestFormProps) {
+  const [formData, setFormData] = useState({
+    product_name: '',
+    description: '',
+    price: '',
+    quantity: 1,
+    images: [] as File[]
+  });
+  const [autoAccept, setAutoAccept] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const form = useForm<FormData>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      description: '',
-      maxPrice: 0,
-      latitude: userLocation?.lat || 0,
-      longitude: userLocation?.lng || 0,
-      autoAcceptEnabled: false,
-      autoAcceptPrice: 0,
-    },
-  });
-
-  const createRequestMutation = useMutation({
-    mutationFn: async (data: FormData & { image?: File }) => {
-      const formData = new FormData();
-      formData.append('description', data.description);
-      formData.append('categoryId', data.categoryId.toString());
-      formData.append('maxPrice', data.maxPrice.toString());
-      formData.append('latitude', data.latitude.toString());
-      formData.append('longitude', data.longitude.toString());
-      formData.append('buyerId', '1'); // Demo user ID
-      
-      if (data.autoAcceptEnabled) {
-        formData.append('autoAcceptEnabled', 'true');
-        formData.append('autoAcceptPrice', data.autoAcceptPrice?.toString() || '0');
-      }
-      
-      if (data.image) {
-        formData.append('image', data.image);
-      }
-
-      const response = await fetch('/api/requests', {
+  const createOfferMutation = useMutation({
+    mutationFn: async (data: FormData) => {
+      const response = await fetch('http://localhost:8000/api/offers', {
         method: 'POST',
-        body: formData,
+        body: data,
       });
 
       if (!response.ok) {
-        throw new Error('Failed to create request');
+        throw new Error('Failed to create offer');
       }
 
       return response.json();
     },
-    onSuccess: async (request) => {
-      // Create demo offers for testing
-      await apiRequest('POST', `/api/demo/create-offers/${request.id}`);
-      
-      // Fetch the request with offers
-      const requestWithOffers = await apiRequest('GET', `/api/requests/${request.id}`);
-      
+    onSuccess: (data) => {
       toast({
-        title: 'Request Posted!',
-        description: 'Your request is now active. Waiting for offers...',
+        title: "Offer Created!",
+        description: "Your offer has been broadcast to nearby sellers.",
       });
-      
-      onRequestSubmitted(requestWithOffers);
+      onRequestCreated?.(data.offer_id);
+      // Reset form
+      setFormData({
+        product_name: '',
+        description: '',
+        price: '',
+        quantity: 1,
+        images: []
+      });
     },
     onError: (error) => {
-      console.error('Error creating request:', error);
       toast({
-        title: 'Error',
-        description: 'Failed to create request. Please try again.',
-        variant: 'destructive',
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
       });
     },
   });
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setSelectedImage(file);
-      const reader = new FileReader();
-      reader.onload = () => {
-        setImagePreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
 
-  const onSubmit = (data: FormData) => {
     if (!userLocation) {
       toast({
-        title: 'Location Required',
-        description: 'Please enable location access to post a request.',
-        variant: 'destructive',
+        title: "Location Required",
+        description: "Please enable location services to create an offer.",
+        variant: "destructive",
       });
       return;
     }
 
-    createRequestMutation.mutate({
-      ...data,
-      latitude: userLocation.lat,
-      longitude: userLocation.lng,
-      image: selectedImage || undefined,
+    if (formData.images.length < 2) {
+      toast({
+        title: "Images Required",
+        description: "Please upload at least 2 images of what you're looking for.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const submitData = new FormData();
+    submitData.append('buyer_id', `buyer_${Math.random().toString(36).substr(2, 9)}`);
+    submitData.append('product_name', formData.product_name);
+    submitData.append('description', formData.description);
+    submitData.append('price', formData.price);
+    submitData.append('quantity', formData.quantity.toString());
+    submitData.append('lat', userLocation.lat.toString());
+    submitData.append('lng', userLocation.lng.toString());
+    submitData.append('radius', '5.0');
+
+    formData.images.forEach(image => {
+      submitData.append('images', image);
     });
+
+    createOfferMutation.mutate(submitData);
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    setFormData(prev => ({
+      ...prev,
+      images: [...prev.images, ...files].slice(0, 5) // Max 5 images
+    }));
+  };
+
+  const removeImage = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      images: prev.images.filter((_, i) => i !== index)
+    }));
   };
 
   return (
-    <div className="p-4 space-y-6">
-      <Button
-        variant="ghost"
-        onClick={onBack}
-        className="flex items-center text-primary text-sm font-medium mb-4 -ml-2"
-      >
-        <ArrowLeftIcon className="w-4 h-4 mr-2" />
-        Back to sellers
-      </Button>
+    <Card className="w-full">
+      <CardHeader>
+        <CardTitle>What are you looking for?</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <Label htmlFor="product_name">Product Name</Label>
+            <Input
+              id="product_name"
+              value={formData.product_name}
+              onChange={(e) => setFormData(prev => ({ ...prev, product_name: e.target.value }))}
+              placeholder="e.g., Fresh vegetables"
+              required
+            />
+          </div>
 
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-          {/* Image Upload */}
-          <FormItem>
-            <FormLabel>Product Image</FormLabel>
-            <FormControl>
-              <div className="space-y-4">
-                <label
-                  htmlFor="image-upload"
-                  className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center cursor-pointer hover:border-primary transition-colors block"
-                >
-                  {imagePreview ? (
-                    <div className="space-y-2">
-                      <img
-                        src={imagePreview}
-                        alt="Preview"
-                        className="w-32 h-32 object-cover mx-auto rounded-lg"
-                      />
-                      <p className="text-sm text-gray-600">Tap to change image</p>
-                    </div>
-                  ) : (
-                    <>
-                      <CameraIcon className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                      <p className="text-sm text-gray-600">Tap to upload image</p>
-                    </>
-                  )}
-                </label>
-                <input
-                  id="image-upload"
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageChange}
-                  className="hidden"
-                />
-              </div>
-            </FormControl>
-          </FormItem>
+          <div>
+            <Label htmlFor="description">Description</Label>
+            <Textarea
+              id="description"
+              value={formData.description}
+              onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+              placeholder="Describe what you're looking for..."
+              required
+            />
+          </div>
 
-          {/* Description */}
-          <FormField
-            control={form.control}
-            name="description"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Description</FormLabel>
-                <FormControl>
-                  <Textarea
-                    {...field}
-                    placeholder="What are you looking for?"
-                    rows={3}
-                    className="resize-none"
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          {/* Category */}
-          <FormField
-            control={form.control}
-            name="categoryId"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Category</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value?.toString()}>
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    {categories.map((category) => (
-                      <SelectItem key={category.id} value={category.id.toString()}>
-                        {category.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          {/* Max Price */}
-          <FormField
-            control={form.control}
-            name="maxPrice"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Maximum Price (USD)</FormLabel>
-                <FormControl>
-                  <div className="relative">
-                    <span className="absolute left-3 top-3 text-gray-500">$</span>
-                    <Input
-                      {...field}
-                      type="number"
-                      placeholder="0.00"
-                      className="pl-8"
-                      min="0"
-                      step="0.01"
-                    />
-                  </div>
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          {/* Auto Accept */}
-          <Card className="p-4 bg-gray-50 border-gray-200">
-            <div className="space-y-4">
-              <FormField
-                control={form.control}
-                name="autoAcceptEnabled"
-                render={({ field }) => (
-                  <FormItem className="flex flex-row items-center justify-between">
-                    <div className="space-y-0.5">
-                      <FormLabel className="text-base font-medium">Auto-Accept Offers</FormLabel>
-                      <p className="text-sm text-gray-600">
-                        Automatically accept offers at or below your set price
-                      </p>
-                    </div>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                  </FormItem>
-                )}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="price">Budget ($)</Label>
+              <Input
+                id="price"
+                type="number"
+                step="0.01"
+                value={formData.price}
+                onChange={(e) => setFormData(prev => ({ ...prev, price: e.target.value }))}
+                placeholder="25.00"
+                required
               />
-
-              {form.watch('autoAcceptEnabled') && (
-                <FormField
-                  control={form.control}
-                  name="autoAcceptPrice"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Auto-Accept Price (USD)</FormLabel>
-                      <FormControl>
-                        <div className="relative">
-                          <span className="absolute left-3 top-3 text-gray-500">$</span>
-                          <Input
-                            {...field}
-                            type="number"
-                            placeholder="0.00"
-                            className="pl-8"
-                            min="0"
-                            step="0.01"
-                          />
-                        </div>
-                      </FormControl>
-                      <p className="text-xs text-gray-500">
-                        Offers at or below this price will be automatically accepted
-                      </p>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              )}
             </div>
-          </Card>
+            <div>
+              <Label htmlFor="quantity">Quantity</Label>
+              <Input
+                id="quantity"
+                type="number"
+                min="1"
+                value={formData.quantity}
+                onChange={(e) => setFormData(prev => ({ ...prev, quantity: parseInt(e.target.value) || 1 }))}
+                required
+              />
+            </div>
+          </div>
 
-          <Button
-            type="submit"
-            className="w-full bg-primary text-white hover:bg-primary/90"
-            disabled={createRequestMutation.isPending}
-          >
-            {createRequestMutation.isPending ? (
-              <>
-                <LoaderIcon className="w-4 h-4 mr-2 animate-spin" />
-                Posting Request...
-              </>
-            ) : (
-              'Post Request'
+          <div>
+            <Label>Images (minimum 2 required)</Label>
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
+              <input
+                type="file"
+                id="images"
+                multiple
+                accept="image/*"
+                onChange={handleImageChange}
+                className="hidden"
+              />
+              <label htmlFor="images" className="cursor-pointer">
+                <Camera className="mx-auto h-8 w-8 text-gray-400 mb-2" />
+                <p className="text-sm text-gray-600">
+                  Click to upload images ({formData.images.length}/5)
+                </p>
+              </label>
+            </div>
+
+            {formData.images.length > 0 && (
+              <div className="grid grid-cols-3 gap-2 mt-2">
+                {formData.images.map((file, index) => (
+                  <div key={index} className="relative">
+                    <img
+                      src={URL.createObjectURL(file)}
+                      alt={`Upload ${index + 1}`}
+                      className="w-full h-20 object-cover rounded"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeImage(index)}
+                      className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 text-xs"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
             )}
+          </div>
+
+          <Button 
+            type="submit" 
+            className="w-full" 
+            disabled={createOfferMutation.isPending}
+          >
+            {createOfferMutation.isPending ? 'Creating Offer...' : 'Post Request'}
           </Button>
         </form>
-      </Form>
-    </div>
+      </CardContent>
+    </Card>
   );
 }

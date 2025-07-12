@@ -41,6 +41,9 @@ export const getQueryFn: <T>(options: {
     return await res.json();
   };
 
+// FastAPI backend runs on port 8000
+export const API_BASE_URL = "http://localhost:8000";
+
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
